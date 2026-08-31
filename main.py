@@ -1,4 +1,4 @@
-from classes.game import Game
+from ItWordCode.classes.game import Game
 
 if __name__ == "__main__":
     Game().run()

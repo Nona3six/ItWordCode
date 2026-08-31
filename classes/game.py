@@ -13,6 +13,9 @@ class DataLoader:
                 with open("assets/words.json") as f:
                     Word.all_words = json.load(f)
 
+                with open("assets/letter_values.json") as f:
+                    Word.letter_values = json.load(f)
+
                 with open("assets/itwords.json") as f:
                     ItWord.all_itwords = json.load(f)
 
@@ -22,21 +25,29 @@ class DataLoader:
 
             except FileNotFoundError as e:
                 raise FileNotFoundError("No such file or directory")
+
  
 @dataclass(frozen=True)
 class Word:
     """Loads a Dict of all valid words of 3-8 letters and the corresponding scrabble score"""
     word: str
-    value: int
+    value: int = 0
+
     all_words: ClassVar[Dict[str, int]] = {}
+    letter_values: ClassVar[Dict[str, int]] = {}
+
+    def word_value(self) -> int:
+        """Calculate the value of a word using letter_values."""
+        return sum(Word.letter_values[letter] for letter in self.word)
+
 
 @dataclass(frozen=True)
 class ItWord:
-    """Loads a list of all valid ItWords, sets date for first ItWord in the list"""
-    itword: str
+    """Loads a list of all valid ItWords"""
+    word: str
     all_itwords: ClassVar[List[str]] = []
 
-    day_zero: ClassVar[date] = date(2026, 8, 30)
+    day_zero: ClassVar[date] = date(2026, 8, 1)
 
     @classmethod
     def get_itword(cls, d: date) -> str:
@@ -49,6 +60,7 @@ class ItWord:
             raise ValueError("All ItWords used")
 
         return cls.all_itwords[index]
+
 
 @dataclass
 class GameSession:
@@ -63,6 +75,7 @@ class GameSession:
     def session_length(self) -> float | None:
         return round((self.end - self.start).total_seconds(), 1) if self.end else None 
 
+
 @dataclass
 class Guess:
     """Ensures user input matches JSON format and returns valid boolean"""
@@ -74,11 +87,12 @@ class Guess:
         self.gamesession.total_guesses += 1
 
         if self.valid:
-            self.gamesession.word_score += Word.all_words[self.guess]
-
+            self.gamesession.word_score += Word(self.guess).word_value()
+     
     @property
     def valid(self) -> bool:
         return self.guess in Word.all_words
+
 
 class Game:
     def __init__(self):
@@ -95,7 +109,7 @@ class Game:
             word = f"{self.itword[self.round]}{dash_string} _ : "
 
         return input(word)
-  
+
     def play_rounds(self):
         while self.round <= 5:
             self.user_guess = Guess(self.game_session, self.get_user_guess())        

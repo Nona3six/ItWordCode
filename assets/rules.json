@@ -4,7 +4,11 @@
         "For each round you will need to enter a valid word to be able to proceed to the next round",
         "The valid word must include specified letters, all of which will be from the ItWord",
         "As you proceed through the rounds you will be asked to enter a word of an increasing length, starting at 3 letters and ending at 8",
-        "The game ends when you successfully complete round 6"
+        "The game ends when you successfully complete round 6",
+        "For each correct guess, a Scrabble score will be applied to the word you entered and added to your total score",
+        "A point will be deducted from your total score for each incorrect guess you make",
+        "Finally, a point will be deducted from your total score for each minute it takes you to complete the game",
+        "You will be presented with your game stats and final score at the end of the game"
     ]
 }
 

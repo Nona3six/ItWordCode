@@ -1,5 +1,4 @@
 import json
-import random
 from datetime import datetime, date
 from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List
@@ -49,7 +48,6 @@ class Word:
 @dataclass(frozen=True)
 class ItWord:
     """Loads a list of all valid ItWords."""
-    word: str
     all_itwords: ClassVar[List[str]] = []
     itword_archive: ClassVar[Dict[date, str]] = {}
 
@@ -67,11 +65,9 @@ class ItWord:
         if d in cls.itword_archive:
             return cls.itword_archive[d]
         
-        index = (d - cls.day_zero).days % len(cls.all_itwords) #this ensures all_itwords is continually cycled through
-        itword = cls.all_itwords[index]
-        
+        index = (d - cls.day_zero).days % len(cls.all_itwords) #this ensures all_itwords is continually cycled through        
+        itword = cls.all_itwords[index]        
         cls.itword_archive[d] = itword 
-
         cls.save_itword() #saves updated itword_archive to JSON file
 
         return itword
@@ -84,11 +80,20 @@ class GameSession:
     start: datetime = field(default_factory=datetime.now)
     end: datetime | None = None
     total_guesses: int = 0
-    word_score: int = 0
+    gamesession_score: int = 6 #1 point deducted each incorrect guess, starting score of 6 allows for the minimum 6 guesses needed to complete game
+    session_words: Dict[str, int] = field(default_factory=dict)
  
-    @property
-    def session_length(self) -> float | None:
-        return round((self.end - self.start).total_seconds(), 1) if self.end else None 
+    def gamesession_length(self):
+        if not self.end:
+            return None
+        
+        session_length = int((self.end - self.start).total_seconds())
+        minutes = session_length // 60
+        seconds = session_length % 60
+        
+        self.gamesession_score -= minutes  # Subtract 1 point for each minute taken to complete the game
+
+        return minutes, seconds
 
 
 @dataclass
@@ -96,13 +101,16 @@ class Guess:
     """Ensures user input matches JSON format and returns valid boolean"""
     gamesession: GameSession
     guess: str
-
+    
     def __post_init__(self):
         self.guess = self.guess.upper() 
         self.gamesession.total_guesses += 1
+        self.gamesession.gamesession_score -= 1  # Subtract 1 point for each guess made
 
         if self.valid:
-            self.gamesession.word_score += Word(self.guess).word_value()
+            value = Word(self.guess).word_value()
+            self.gamesession.gamesession_score += value
+            self.gamesession.session_words[self.guess] = value
      
     @property
     def valid(self) -> bool:
@@ -114,7 +122,7 @@ class Game:
         self.date = date.today()
 
     def get_user_guess(self):
-        """Returns a correctly formatted word to print to screen."""
+        """Returns a correctly formatted word to print to screen for user to input guess."""
         dash_string = " _ " * (self.round)
 
         if self.round <= 4:
@@ -150,9 +158,11 @@ class Game:
         self.play_rounds() 
 
         self.game_session.end = datetime.now()  
+        minutes, seconds = self.game_session.gamesession_length()  # Initialize session length
 
-        print(f"Number of guesses: {self.game_session.total_guesses}")
-        print(f"Total word score: {self.game_session.word_score}")
-        print(f"Time to complete:  {self.game_session.session_length} seconds") 
+        print(f"Number of guesses: {self.game_session.total_guesses}")  
+        print(f"You guessed: {self.game_session.session_words}")      
+        print(f"Time to complete: {minutes} min {seconds} sec") 
+        print(f"Total score: {self.game_session.gamesession_score} points")
     
 

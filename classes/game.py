@@ -1,7 +1,9 @@
 import json
+import random
 from datetime import datetime, date
 from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List
+
 
 class DataLoader:
         """Loads data stored in JSON files in assets folder.""" 
@@ -19,6 +21,9 @@ class DataLoader:
                 with open("assets/itwords.json") as f:
                     ItWord.all_itwords = json.load(f)
 
+                with open("assets/itword_archive.json") as f:
+                    ItWord.itword_archive = {date.fromisoformat(d): w for d, w in json.load(f).items()}
+
                 with open("assets/rules.json") as f:
                     rules = json.load(f)
                     return rules
@@ -29,11 +34,11 @@ class DataLoader:
  
 @dataclass(frozen=True)
 class Word:
-    """Loads a Dict of all valid words of 3-8 letters and the corresponding scrabble score"""
+    """Loads a list of all valid words of 3-8 letters plus a dict of all letters and their corresponding points value"""
     word: str
     value: int = 0
 
-    all_words: ClassVar[Dict[str, int]] = {}
+    all_words: ClassVar[List[str]] = []
     letter_values: ClassVar[Dict[str, int]] = {}
 
     def word_value(self) -> int:
@@ -43,23 +48,33 @@ class Word:
 
 @dataclass(frozen=True)
 class ItWord:
-    """Loads a list of all valid ItWords"""
+    """Loads a list of all valid ItWords."""
     word: str
     all_itwords: ClassVar[List[str]] = []
+    itword_archive: ClassVar[Dict[date, str]] = {}
 
-    day_zero: ClassVar[date] = date(2026, 8, 1)
+    day_zero: ClassVar[date] = date(2026, 9, 1)  # Starting date for all_itwords cycling
+
+    @classmethod
+    def save_itword(cls):
+        """Saves itword_archive to JSON file."""
+        with open("assets/itword_archive.json", "w") as file:
+            json.dump({d.isoformat(): w for d, w in cls.itword_archive.items()}, file, indent=4)
 
     @classmethod
     def get_itword(cls, d: date) -> str:
-        """Returns the ItWord for a given date, with the date equating to an index in the list."""
-        index = (d - cls.day_zero).days
+        """Returns the ItWord for a given date, saves it to itword_archive if not already present."""
+        if d in cls.itword_archive:
+            return cls.itword_archive[d]
+        
+        index = (d - cls.day_zero).days % len(cls.all_itwords) #this ensures all_itwords is continually cycled through
+        itword = cls.all_itwords[index]
+        
+        cls.itword_archive[d] = itword 
 
-        if index < 0:
-            raise ValueError("Date is before day_zero.")
-        if index >= len(cls.all_itwords):
-            raise ValueError("All ItWords used")
+        cls.save_itword() #saves updated itword_archive to JSON file
 
-        return cls.all_itwords[index]
+        return itword
 
 
 @dataclass
@@ -138,5 +153,6 @@ class Game:
 
         print(f"Number of guesses: {self.game_session.total_guesses}")
         print(f"Total word score: {self.game_session.word_score}")
-        print(f"Time to complete:  {self.game_session.session_length} seconds")  
+        print(f"Time to complete:  {self.game_session.session_length} seconds") 
+    
 

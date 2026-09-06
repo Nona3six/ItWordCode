@@ -6,22 +6,20 @@ from typing import ClassVar, Dict, List
 
 class DataLoader:
         """Loads data stored in JSON files in assets folder.""" 
-
         @classmethod     
         def load(cls):
-
             try:
                 with open("assets/words.json") as f:
-                    Word.all_words = json.load(f)
+                    Word._all_words = [w.upper() for w in json.load(f)]
 
                 with open("assets/letter_values.json") as f:
-                    Word.letter_values = json.load(f)
+                    Word._letter_values = json.load(f)
 
                 with open("assets/itwords.json") as f:
-                    ItWord.all_itwords = json.load(f)
+                    ItWord._all_itwords = [w.upper() for w in json.load(f)]
 
                 with open("assets/itword_archive.json") as f:
-                    ItWord.archive = {date.fromisoformat(d): w for d, w in json.load(f).items()}
+                    ItWord._archive = {date.fromisoformat(d): w for d, w in json.load(f).items()}
 
                 with open("assets/rules.json") as f:
                     rules = json.load(f)
@@ -35,116 +33,128 @@ class DataLoader:
 class Word:
     """Loads a list of all valid words of 3-8 letters plus a dict of all letters and their corresponding points value"""
     word: str
-    word_value: int = 0
-
-    all_words: ClassVar[List[str]] = []
-    letter_values: ClassVar[Dict[str, int]] = {}
+  
+    _all_words: ClassVar[List[str]] = []
+    _letter_values: ClassVar[Dict[str, int]] = {}
 
     def value(self) -> int:
         """Calculate the value of a word using letter_values."""
-        return sum(Word.letter_values[letter] for letter in self.word)
+        return sum(Word._letter_values[letter] for letter in self.word)
 
 
 @dataclass(frozen=True)
 class ItWord:
     """Loads a list of all valid ItWords."""
-    all_itwords: ClassVar[List[str]] = []
-    archive: ClassVar[Dict[date, str]] = {}
+    _all_itwords: ClassVar[List[str]] = []
 
-    day_zero: ClassVar[date] = date(2026, 9, 1)  # Starting date for all_itwords cycling
+
+@dataclass
+class DailyItWord:
+    """Loads a list of all valid ItWords."""
+    _itword: ItWord
+    _archive: ClassVar[Dict[date, str]] = {}
+
+    DAY_ZERO: ClassVar[date] = date(2026, 9, 1)  # Starting date for all_itwords cycling
 
     @classmethod
-    def save(cls):
+    def save_to_archive(cls):
         """Saves itword_archive to JSON file."""
         with open("assets/itword_archive.json", "w") as file:
-            json.dump({date.isoformat(): word for date, word in cls.archive.items()}, file, indent=4)
+            json.dump({d.isoformat(): w for d, w in cls._archive.items()}, file, indent=4)
 
     @classmethod
     def get_itword(cls, date: date) -> str:
         """Returns the ItWord for a given date, saves it to itword_archive if not already present."""
-        if date in cls.archive:
-            return cls.archive[date]
+        if date in cls._archive:
+            return cls._archive[date]
         
-        index = (date - cls.day_zero).days % len(cls.all_itwords) #this ensures all_itwords is continually cycled through        
-        itword = cls.all_itwords[index]        
-        cls.archive[date] = itword 
-        cls.save() #saves updated itword_archive to JSON file
+        _index = (date - cls.DAY_ZERO).days % len(ItWord._all_itwords) #this ensures all_itwords is continually cycled through        
+        _itword = ItWord._all_itwords[_index]        
+        cls._archive[date] = _itword 
+        cls.save_to_archive() #saves updated itword_archive to JSON file
 
-        return itword
+        return _itword  
 
 
 @dataclass
 class GameSession:
     """Tracks session analytics and returns length of session when it ends"""
     user: int
-    start: datetime = field(default_factory=datetime.now)
-    end: datetime | None = None
-    total_guesses: int = 0
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime | None = None
     word_length: int = 3
-    round = 0  
-    first_letter = 0
-    last_letter = 1
+    first_letter_index: int = 0
+    last_letter_index: int = 1
+    game_round: int = 1
+    max_rounds: int = 6
+    total_guesses: int = 0
     total_score: int = 0
     valid_guessed_words: Dict[str, int] = field(default_factory=dict)
+
+    def apply_valid_guess(self, guess, word_value: int):
+        self.total_score += word_value
+        self.valid_guessed_words[guess] = word_value
+        self.word_length += 1
+        self.game_round += 1
+        self.first_letter_index += 1
+        if self.game_round < self.max_rounds:
+            self.last_letter_index += 1
+
+    def apply_invalid_guess(self):
+        self.total_score -= 1 #subtract 1 point for each invalid guess
  
-    def duration(self):
-        if not self.end:
+    def finalize_session(self):
+        if not self.end_time:
             return None
         
-        session_length = int((self.end - self.start).total_seconds())
-        minutes = session_length // 60
-        seconds = session_length % 60
+        _session_length = int((self.end_time - self.start_time).total_seconds())
+        _minutes = _session_length // 60
+        _seconds = _session_length % 60
         
-        self.total_score -= minutes  # Subtract 1 point for each minute taken to complete the game
+        self.total_score -= _minutes  # Subtract 1 point for each minute taken to complete the game
 
-        return minutes, seconds #only returns minutes and seconds to print to screen in Game.run method
+        return _minutes, _seconds #only returns minutes and seconds to print to screen in Game.run method
 
 
 @dataclass
 class Guess:
-    """Ensures user input matches JSON format and returns valid boolean"""
+    """Ensures user input meets game criteria and returns boolean"""
     gamesession: GameSession
     itword: str
-    user_guess: str
+    guess: str
     
     def __post_init__(self):
-        self.user_guess = self.user_guess.upper() 
+        self.guess = self.guess.upper() 
         self.gamesession.total_guesses += 1
 
         if self.valid:
-            value = Word(self.user_guess).value()
-            self.gamesession.total_score += value
-            self.gamesession.valid_guessed_words[self.user_guess] = value
-            self.gamesession.word_length += 1    
-            self.gamesession.round += 1   
-            self.gamesession.first_letter += 1  
-            if self.gamesession.round <= 4:
-                self.gamesession.last_letter += 1      
+            word_value = Word(self.guess).value()
+            self.gamesession.apply_valid_guess(self.guess, word_value)    
 
         else:
-          self.gamesession.total_score -= 1  # Subtract 1 point for each incorrect guess made         
+          self.gamesession.apply_invalid_guess()         
 
     @property
-    def first_letter(self) -> int:
-        return self.gamesession.first_letter
+    def first_letter_index(self) -> int:
+        return self.gamesession.first_letter_index
 
     @property
-    def last_letter(self) -> int:
-        return self.gamesession.last_letter
+    def last_letter_index(self) -> int:      
+        return self.gamesession.last_letter_index
 
     @property
-    def rounds(self) -> int:
-        return self.gamesession.round
+    def game_round(self) -> int:
+        return self.gamesession.game_round
      
     @property
     def valid(self) -> bool:
-        guess = self.user_guess
+        guess = self.guess
 
         return (
-            guess in Word.all_words
+            guess in Word._all_words
             and len(guess) == self.gamesession.word_length
-            and guess[0] == self.itword[self.first_letter]
-            and (self.rounds >= 5 or guess[-1] == self.itword[self.last_letter])
+            and guess[0] == self.itword[self.first_letter_index]
+            and (self.gamesession.game_round >= self.gamesession.max_rounds or guess[-1] == self.itword[self.last_letter_index])
     )   
 
 
@@ -154,28 +164,28 @@ class Game:
 
     def get_user_guess(self):
         """Returns a correctly formatted word to print to screen for user to input guess."""
-        dash_string = " _ " * (self.game_session.round)
+        _dash_string = " _ " * (self.game_session.game_round) 
 
-        if self.game_session.round <= 4:
-            word = f"{self.itword[self.game_session.first_letter]} _ {dash_string}{self.itword[self.game_session.last_letter]}: "
+        if self.game_session.game_round < self.game_session.max_rounds:
+            _guess = f"{self.itword[self.game_session.first_letter_index]}{_dash_string}{self.itword[self.game_session.last_letter_index]}: "
 
         else:
-            word = f"{self.itword[self.game_session.first_letter]}{dash_string} _  _: "
+            _guess = f"{self.itword[self.game_session.first_letter_index]}{_dash_string} _: "
 
-        return input(word)    
+        return input(_guess)    
          
     def run(self):
         """Run from main.py"""
         DataLoader.load()        
-        self.user_ID = 12345 
-        self.game_session = GameSession(self.user_ID)  
-        self.itword = ItWord.get_itword(self.date)
+        user_ID = 12345 
+        self.game_session = GameSession(user_ID)  
+        self.itword = DailyItWord.get_itword(self.date)
 
-        while self.game_session.round <= 5:
-            self.input = Guess(self.game_session, self.itword, self.get_user_guess())  
+        while self.game_session.game_round <= self.game_session.max_rounds:
+            Guess(self.game_session, self.itword, self.get_user_guess())  
 
-        self.game_session.end = datetime.now()  
-        minutes, seconds = self.game_session.duration()  #session duration details only required to print to screen
+        self.game_session.end_time = datetime.now()  
+        minutes, seconds = self.game_session.finalize_session()  #session duration details only required to print to screen
 
         print(f"You correctly entered: {self.game_session.valid_guessed_words}")    
         print(f"Number of guesses in total: {self.game_session.total_guesses}")  
